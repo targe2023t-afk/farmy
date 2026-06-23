@@ -6,9 +6,10 @@ workflows:
       node: 20.x
       java: 17
       android_signing:
-        - farmy_keystore          # أنشئه في Codemagic → Teams → Code signing
+        - farmy_keystore
       vars:
         PACKAGE_NAME: com.farmy.app
+
     scripts:
       - name: Install & Build Web
         script: npm ci && npm run build
@@ -16,17 +17,19 @@ workflows:
       - name: Capacitor Sync
         script: npx cap sync android
 
-      - name: Build APK / AAB
+      - name: Build AAB
         script: |
           cd android
-          ./gradlew bundleRelease   # AAB للـ Play Store
-          # ./gradlew assembleRelease  # APK للتثبيت المباشر
+          ./gradlew bundleRelease
 
     artifacts:
       - android/app/build/outputs/bundle/release/*.aab
       - android/app/build/outputs/apk/release/*.apk
 
     publishing:
-      google_play:
-        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS   # JSON من Google Play Console
-        track: internal   # internal → alpha → beta → production
+      email:
+        recipients:
+          - targe2023t@gmail.com
+        notify:
+          success: true
+          failure: true
