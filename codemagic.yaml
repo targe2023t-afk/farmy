@@ -2,6 +2,7 @@ workflows:
   android-release:
     name: Farmy Android Release
     max_build_duration: 60
+    working_directory: farmy-new
     environment:
       node: 20.11.0
       java: 17
@@ -9,23 +10,16 @@ workflows:
         - farmy_keystore
       vars:
         PACKAGE_NAME: com.farmy.app
-
     scripts:
       - name: Install & Build Web
         script: npm install && npm run build
-
       - name: Capacitor Sync
         script: npx cap sync android
-
       - name: Build AAB
-        script: |
-          cd android
-          ./gradlew bundleRelease
-
+        script: cd android && ./gradlew bundleRelease
     artifacts:
-      - android/app/build/outputs/bundle/release/*.aab
-      - android/app/build/outputs/apk/release/*.apk
-
+      - farmy-new/android/app/build/outputs/bundle/release/*.aab
+      - farmy-new/android/app/build/outputs/apk/release/*.apk
     publishing:
       email:
         recipients:
