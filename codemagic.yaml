@@ -15,11 +15,14 @@ workflows:
         script: npm install && npm run build
       - name: Capacitor Setup
         script: npx cap add android && npx cap sync android
-      - name: Build AAB
-        script: cd android && ./gradlew bundleRelease
+      - name: Build APK + AAB
+        script: |
+          cd android
+          ./gradlew assembleRelease
+          ./gradlew bundleRelease
     artifacts:
-      - farmy-new/android/app/build/outputs/bundle/release/*.aab
-      - farmy-new/android/app/build/outputs/apk/release/*.apk
+      - "**/*.apk"
+      - "**/*.aab"
     publishing:
       email:
         recipients:
