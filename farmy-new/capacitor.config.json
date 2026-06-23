@@ -1,0 +1,20 @@
+{
+  "appId": "com.farmy.app",
+  "appName": "Farmy",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true,
+    "hostname": "app"
+  },
+  "android": {
+    "allowMixedContent": true,
+    "backgroundColor": "#1a7a3c",
+    "useLegacyBridge": false
+  },
+  "plugins": {
+    "Camera": {
+      "permissionText": "نحتاج إذن الكاميرا لمسح الباركود"
+    }
+  }
+}
