@@ -13,8 +13,8 @@ workflows:
     scripts:
       - name: Install & Build Web
         script: npm install && npm run build
-      - name: Capacitor Sync
-        script: npx cap sync android
+      - name: Capacitor Setup
+        script: npx cap add android && npx cap sync android
       - name: Build AAB
         script: cd android && ./gradlew bundleRelease
     artifacts:
