@@ -594,31 +594,88 @@ function LoginPage({users,setUsers,onLogin}) {
 function BarcodeScanner({onScan,onClose}) {
   const videoRef=useRef(null); const streamRef=useRef(null);
   const [error,setError]=useState(""); const [manualCode,setManualCode]=useState("");
+  const [permState,setPermState]=useState("idle"); // idle|requesting|granted|denied
+
   useEffect(()=>{
     let interval;
+
     async function startCamera(){
+      // 1. تحقق من وجود getUserMedia
+      if(!navigator.mediaDevices?.getUserMedia){
+        setError("متصفحك لا يدعم الكاميرا — استخدم الإدخال اليدوي");
+        return;
+      }
+
       try{
-        const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});
-        streamRef.current=stream;
-        if(videoRef.current){videoRef.current.srcObject=stream;videoRef.current.play();}
-        if("BarcodeDetector" in window){
-          const detector=new window.BarcodeDetector({formats:["ean_13","ean_8","qr_code","code_128","code_39"]});
-          interval=setInterval(async()=>{
-            if(videoRef.current){try{const b=await detector.detect(videoRef.current);if(b.length>0){onScan(b[0].rawValue);stopCamera();}}catch(_){}}
-          },500);
+        // 2. اطلب الإذن صراحةً أولاً
+        setPermState("requesting");
+        const perm=await navigator.permissions?.query({name:"camera"}).catch(()=>null);
+        if(perm?.state==="denied"){
+          setPermState("denied");
+          setError("تم رفض إذن الكاميرا — فعّلها من إعدادات التطبيق");
+          return;
         }
-      }catch(e){setError("لا يمكن الوصول للكاميرا.");}
+
+        // 3. افتح الكاميرا الخلفية أولاً، وإن فشلت جرب أي كاميرا
+        let stream;
+        try{
+          stream=await navigator.mediaDevices.getUserMedia({
+            video:{facingMode:{ideal:"environment"},width:{ideal:1280},height:{ideal:720}}
+          });
+        }catch(_){
+          stream=await navigator.mediaDevices.getUserMedia({video:true});
+        }
+
+        setPermState("granted");
+        streamRef.current=stream;
+        if(videoRef.current){
+          videoRef.current.srcObject=stream;
+          await videoRef.current.play().catch(()=>{});
+        }
+
+        // 4. BarcodeDetector إن كان مدعوماً
+        if("BarcodeDetector" in window){
+          const detector=new window.BarcodeDetector({formats:["ean_13","ean_8","qr_code","code_128","code_39","upc_a"]});
+          interval=setInterval(async()=>{
+            if(videoRef.current?.readyState===4){
+              try{
+                const b=await detector.detect(videoRef.current);
+                if(b.length>0){onScan(b[0].rawValue);stopCamera();}
+              }catch(_){}
+            }
+          },400);
+        }else{
+          setError("الكاميرا تعمل — أدخل الكود يدوياً (المتصفح لا يدعم المسح التلقائي)");
+        }
+
+      }catch(e){
+        setPermState("denied");
+        const msg=e.name==="NotAllowedError"?"تم رفض إذن الكاميرا — فعّلها من الإعدادات":
+                  e.name==="NotFoundError"?"لم يتم العثور على كاميرا في الجهاز":
+                  e.name==="NotReadableError"?"الكاميرا مستخدمة من تطبيق آخر":
+                  "خطأ في الكاميرا: "+e.message;
+        setError(msg);
+      }
     }
-    const stopCamera=()=>{if(streamRef.current){streamRef.current.getTracks().forEach(t=>t.stop());}clearInterval(interval);};
+
+    const stopCamera=()=>{
+      if(streamRef.current){streamRef.current.getTracks().forEach(t=>t.stop());}
+      clearInterval(interval);
+    };
+
     startCamera();
-    return()=>{if(streamRef.current){streamRef.current.getTracks().forEach(t=>t.stop());}clearInterval(interval);};
+    return()=>{stopCamera();};
   },[onScan]);
   return(
     <div className="modal-ov" onClick={onClose}>
       <div className="modal-box" onClick={e=>e.stopPropagation()}>
         <div className="modal-handle"/>
         <div className="modal-title">📷 مسح الباركود</div>
-        {error?<div className="err-msg">{error}</div>:<div className="scan-wrap" style={{margin:"0 0 14px"}}><div className="scan-overlay"><video ref={videoRef} className="scan-video" muted playsInline/><div className="scan-line"/></div></div>}
+        {permState==="requesting"&&!error&&<div style={{textAlign:"center",padding:20,color:"#707a6c",fontSize:13}}>⏳ جاري طلب إذن الكاميرا...</div>}
+        {error
+          ?<div className="err-msg" style={{marginBottom:12}}>{error}</div>
+          :permState!=="requesting"&&<div className="scan-wrap" style={{margin:"0 0 14px"}}><div className="scan-overlay"><video ref={videoRef} className="scan-video" muted playsInline/><div className="scan-line"/></div></div>
+        }
         <div style={{textAlign:"center",fontSize:12,color:"var(--text3)",marginBottom:12}}>أو أدخل الكود يدوياً</div>
         <div style={{display:"flex",gap:8}}>
           <input className="finp" style={{flex:1}} placeholder="أدخل الباركود..." value={manualCode} onChange={e=>setManualCode(e.target.value)} onKeyDown={e=>e.key==="Enter"&&manualCode&&onScan(manualCode)}/>
