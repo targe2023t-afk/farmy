@@ -463,27 +463,33 @@ export default function App() {
   // ──────────── شاشة التحميل ────────────
   if (!authReady || (loading && !user)) {
     return (
-      <div className="login-wrap" dir="rtl" style={{justifyContent: "center", fontFamily: "'Cairo',sans-serif"}}>
-        <div className="login-top">
-          <div className="login-logo">🌾</div>
-          <div className="login-title">farmy</div>
-          <div className="login-sub">جاري التحميل...</div>
+      <>
+        <div className="login-wrap" dir="rtl" style={{justifyContent: "center", fontFamily: "'Cairo',sans-serif"}}>
+          <div className="login-top">
+            <div className="login-logo">🌾</div>
+            <div className="login-title">farmy</div>
+            <div className="login-sub">جاري التحميل...</div>
+          </div>
         </div>
-      </div>
+        {toast && <div className="toast">{toast}</div>}
+      </>
     );
   }
 
   // ──────────── شاشة الدخول ────────────
   if (!user) {
     return (
-      <LoginPage
-        onLogin={(u) => {
-          setUser(u);
-          const owner = u.role === "admin" || u.role === "manager";
-          const allowed = owner ? [...PAGE_KEYS, "users"] : (u.permissions?.pages || []);
-          setPage(allowed[0] || "dashboard");
-        }}
-      />
+      <>
+        <LoginPage
+          onLogin={(u) => {
+            setUser(u);
+            const owner = u.role === "admin" || u.role === "manager";
+            const allowed = owner ? [...PAGE_KEYS, "users"] : (u.permissions?.pages || []);
+            setPage(allowed[0] || "dashboard");
+          }}
+        />
+        {toast && <div className="toast">{toast}</div>}
+      </>
     );
   }
 
