@@ -25,6 +25,32 @@ workflows:
             npx cap add android
           fi
 
+      - name: Add Deep Link Intent Filter
+        script: |
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          python3 - "$MANIFEST" << 'PYEOF'
+          import sys, re
+          path = sys.argv[1]
+          with open(path, 'r', encoding='utf-8') as f:
+              content = f.read()
+
+          intent_filter = '''        <intent-filter>
+              <action android:name="android.intent.action.VIEW" />
+              <category android:name="android.intent.category.DEFAULT" />
+              <category android:name="android.intent.category.BROWSABLE" />
+              <data android:scheme="com.farmy.app" android:host="login-callback" />
+          </intent-filter>
+          '''
+
+          if 'login-callback' not in content:
+              content = content.replace('</activity>', intent_filter + '    </activity>', 1)
+              with open(path, 'w', encoding='utf-8') as f:
+                  f.write(content)
+              print("Intent filter added.")
+          else:
+              print("Intent filter already present.")
+          PYEOF
+
       - name: Configure Signing
         script: |
           cat >> android/app/build.gradle << 'EOF'
