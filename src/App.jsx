@@ -166,16 +166,19 @@ export default function App() {
     try {
       const authUser = await getCurrentAuthUser();
       if (!authUser) {
+        showToast("⚠️ لا يوجد مستخدم مسجل دخول (authUser فاضي)");
         setUser(null);
         setLoading(false);
         setAuthReady(true);
         return;
       }
+      showToast("✅ تم العثور على المستخدم: " + (authUser.email || authUser.id));
 
       // ✅ نجلب بيانات المستخدم من جدول users بالـ authId
       let dbUser = await fetchUserByAuthId(authUser.id);
 
       if (!dbUser) {
+        showToast("ℹ️ مستخدم جديد، بيتم إنشاء حساب...");
         // مستخدم Google جديد — أنشئ صف في جدول users
         const fid = authUser.id;
         const newUser = {
@@ -192,8 +195,12 @@ export default function App() {
           updatedAt: new Date().toISOString(),
         };
         const { error } = await supabase.from("users").upsert(newUser, { onConflict: "id" });
-        if (error) console.error("create user:", error.message);
-        else dbUser = newUser;
+        if (error) {
+          showToast("❌ فشل إنشاء المستخدم: " + error.message);
+          console.error("create user:", error.message);
+        } else {
+          dbUser = newUser;
+        }
       }
 
       // ✅ تحقق من الحالة قبل السماح بالدخول
@@ -202,9 +209,13 @@ export default function App() {
         await supabaseSignOut();
         setUser(null);
       } else if (dbUser) {
+        showToast("✅ تم تسجيل الدخول بنجاح");
         setUser(dbUser);
+      } else {
+        showToast("❌ تعذر تحميل بيانات المستخدم (dbUser فاضي)");
       }
     } catch (e) {
+      showToast("❌ خطأ في loadUserFromSession: " + e.message);
       console.error("loadUserFromSession:", e.message);
     } finally {
       setLoading(false);
@@ -245,10 +256,17 @@ export default function App() {
         const { Browser } = await import("@capacitor/browser");
         CapApp.addListener("appUrlOpen", async ({ url }) => {
           if (url?.startsWith("com.farmy.app://login-callback")) {
+            showToast("🔗 تم استقبال الرابط من جوجل");
             try {
               const { error } = await supabase.auth.exchangeCodeForSession(url);
-              if (error) console.error("exchangeCodeForSession:", error.message);
+              if (error) {
+                showToast("❌ exchangeCodeForSession: " + error.message);
+                console.error("exchangeCodeForSession:", error.message);
+              } else {
+                showToast("✅ تم تبديل الكود بـ session");
+              }
             } catch (e) {
+              showToast("❌ exchangeCodeForSession استثناء: " + (e?.message || e));
               console.error("exchangeCodeForSession failed:", e?.message || e);
             }
             try { await Browser.close(); } catch (_) {}
