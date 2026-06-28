@@ -245,6 +245,12 @@ export default function App() {
         const { Browser } = await import("@capacitor/browser");
         CapApp.addListener("appUrlOpen", async ({ url }) => {
           if (url?.startsWith("com.farmy.app://login-callback")) {
+            try {
+              const { error } = await supabase.auth.exchangeCodeForSession(url);
+              if (error) console.error("exchangeCodeForSession:", error.message);
+            } catch (e) {
+              console.error("exchangeCodeForSession failed:", e?.message || e);
+            }
             try { await Browser.close(); } catch (_) {}
             await loadUserFromSession();
           }
