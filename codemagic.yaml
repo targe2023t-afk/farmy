@@ -17,6 +17,12 @@ workflows:
           npm install
           npm run build
 
+      - name: Add Android Platform
+        script: |
+          if [ ! -d "android" ]; then
+            npx cap add android
+          fi
+
       - name: Capacitor Sync
         script: npx cap sync android
 
