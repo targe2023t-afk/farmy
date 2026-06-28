@@ -3,7 +3,7 @@ workflows:
     name: Farmy Android Release
     max_build_duration: 60
     environment:
-      node: 20.x
+      node: 20.11.0
       java: 17
       android_signing:
         - farmy_keystore
