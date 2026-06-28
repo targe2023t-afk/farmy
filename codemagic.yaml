@@ -8,7 +8,7 @@ workflows:
       android_signing:
         - farmy_keystore
       groups:
-        - farmy_env
+        - Farmy_env
       vars:
         PACKAGE_NAME: com.farmy.app
 
