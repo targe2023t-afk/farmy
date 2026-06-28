@@ -12,7 +12,7 @@ workflows:
 
     scripts:
       - name: Install & Build Web
-        script: npm ci && npm run build
+        script: npm install && npm run build
 
       - name: Capacitor Sync
         script: npx cap sync android
