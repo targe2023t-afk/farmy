@@ -13,6 +13,9 @@ import { createClient } from '@supabase/supabase-js';
 const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY  = import.meta.env.VITE_SUPABASE_KEY;
 
+const SUPABASE_CALLBACK = 'https://jczdoikvefqqusldzegr.supabase.co/auth/v1/callback';
+const APP_DEEP_LINK     = 'com.farmy.app://login-callback';
+
 if (!SUPABASE_URL || !SUPABASE_KEY) {
   console.error(
     '❌ Missing Supabase env vars.\n' +
@@ -63,7 +66,7 @@ export async function fetchUserByAuthId(authId) {
       .from('users')
       .select('*')
       .eq('authId', authId)
-      .maybeSingle();   // ✅ maybeSingle بدل single عشان مايرمشش خطأ لو null
+      .maybeSingle();
 
     if (error) throw error;
     return data;
@@ -114,29 +117,37 @@ export async function signUpWithEmail(email, password, metadata = {}) {
   }
 }
 
-export async function signInWithGoogle(redirectTo) {
+export async function signInWithGoogle() {
   try {
     const isNative = typeof window !== 'undefined'
       && window.Capacitor?.isNativePlatform?.();
 
     if (isNative) {
+      // ── Android: افتح جوجل في browser خارجي، والـ redirect يرجع للـ app ──
       const { Browser } = await import('@capacitor/browser');
-      const finalRedirect = redirectTo || 'com.farmy.app://login-callback';
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: finalRedirect, skipBrowserRedirect: true }
+        options: {
+          redirectTo: APP_DEEP_LINK,      // com.farmy.app://login-callback
+          skipBrowserRedirect: true,       // ✅ ضروري لـ Capacitor
+        }
       });
       if (error) throw error;
+      if (!data?.url) throw new Error('لم يتم الحصول على رابط Google');
       await Browser.open({ url: data.url });
       return data;
     }
 
+    // ── Web ──
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: redirectTo || window.location.origin }
+      options: {
+        redirectTo: window.location.origin,
+      }
     });
     if (error) throw error;
     return data;
+
   } catch (e) {
     console.error('signInWithGoogle:', e.message);
     throw e;
@@ -154,10 +165,10 @@ export async function signOut() {
   }
 }
 
-export async function resetPasswordForEmail(email, redirectTo) {
+export async function resetPasswordForEmail(email) {
   try {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: redirectTo || window.location.origin
+      redirectTo: window.location.origin
     });
     if (error) throw error;
     return true;
@@ -188,7 +199,6 @@ async function fetchTable(table, farmId) {
     if (farmId) q = q.eq('farmId', farmId);
     const { data, error } = await q;
     if (error) throw error;
-    // ✅ تجاهل الـ soft-deleted
     return (data || []).filter(r => !r.deletedAt);
   } catch (e) {
     console.error(`fetchTable[${table}]:`, e.message);
@@ -211,17 +221,15 @@ async function upsertTable(table, rows) {
 }
 
 // ─────────────────────────────────────────────────────────
-// 🗑️  Generic delete (soft + hard)
+// 🗑️  Generic delete
 // ─────────────────────────────────────────────────────────
 
-/** حذف فعلي */
 async function deleteRow(table, id) {
   const { error } = await supabase.from(table).delete().eq('id', id);
   if (error) throw new Error(`${table} delete: ${error.message}`);
   return true;
 }
 
-/** حذف ناعم (soft delete) — يفضل الصف في قاعدة البيانات لكن بـ deletedAt */
 async function softDeleteRow(table, id) {
   const { error } = await supabase
     .from(table)
@@ -232,22 +240,14 @@ async function softDeleteRow(table, id) {
 }
 
 // ─────────────────────────────────────────────────────────
-// 🔄  Sync: اكتب المصفوفة كاملة (upsert) + احذف المفقودين
+// 🔄  Sync: upsert + حذف المفقودين من السيرفر
 // ─────────────────────────────────────────────────────────
 
-/**
- * Sync between local state and server.
- * @param {string} table - اسم الجدول
- * @param {Array}  rows  - الصفوف الحالية محلياً
- * @param {Array<string>} liveIds - الـ IDs اللي لسه موجودة محلياً (مش محذوفة)
- *   الـ IDs اللي في السيرفر ومش في liveIds لازم تتعملها delete
- */
 export async function syncTable(table, rows, liveIds = null) {
   try {
     if (rows && rows.length > 0) {
       await upsertTable(table, rows);
     }
-    // ✅ لو عرفنا الـ IDs الحية محلياً، نحذف الباقي من السيرفر
     if (liveIds && liveIds.length >= 0) {
       const { data: serverRows, error } = await supabase
         .from(table)
@@ -256,11 +256,10 @@ export async function syncTable(table, rows, liveIds = null) {
       if (error) throw error;
       const toDelete = (serverRows || []).filter(r => !liveIds.includes(r.id));
       if (toDelete.length > 0) {
-        const ids = toDelete.map(r => r.id);
         const { error: delErr } = await supabase
           .from(table)
           .delete()
-          .in('id', ids);
+          .in('id', toDelete.map(r => r.id));
         if (delErr) throw delErr;
       }
     }
@@ -303,22 +302,22 @@ export function unsubscribe(channel) {
 }
 
 // ─────────────────────────────────────────────────────────
-// 📜  Audit log (server-side)
+// 📜  Audit log
 // ─────────────────────────────────────────────────────────
 
 export async function logAudit(entry) {
   try {
     const auditEntry = {
-      id: entry.id || crypto.randomUUID(),
-      userId:     entry.userId     || null,
-      userName:   entry.userName   || null,
-      action:     entry.action     || 'unknown',
-      entity:     entry.entity     || 'unknown',
-      oldVal:     entry.oldVal     || null,
-      newVal:     entry.newVal     || null,
-      farmId:     entry.farmId     || null,
-      timestamp:  new Date().toISOString(),
-      createdAt:  new Date().toISOString(),
+      id:        entry.id || crypto.randomUUID(),
+      userId:    entry.userId   || null,
+      userName:  entry.userName || null,
+      action:    entry.action   || 'unknown',
+      entity:    entry.entity   || 'unknown',
+      oldVal:    entry.oldVal   || null,
+      newVal:    entry.newVal   || null,
+      farmId:    entry.farmId   || null,
+      timestamp: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
     };
     const { error } = await supabase.from('audit_log').insert(auditEntry);
     if (error) throw error;
@@ -354,10 +353,10 @@ export async function fetchAllData(farmId) {
   try {
     const [expenses, revenues, inventory, workers, usageLog, auditLog] =
       await Promise.all([
-        fetchTable('expenses', farmId),
-        fetchTable('revenues', farmId),
+        fetchTable('expenses',  farmId),
+        fetchTable('revenues',  farmId),
         fetchTable('inventory', farmId),
-        fetchTable('workers', farmId),
+        fetchTable('workers',   farmId),
         fetchTable('usage_log', farmId),
         fetchAuditLog(farmId, 200)
       ]);
@@ -369,7 +368,7 @@ export async function fetchAllData(farmId) {
 }
 
 // ─────────────────────────────────────────────────────────
-// 📊  Statistics (server-side aggregation)
+// 📊  Statistics
 // ─────────────────────────────────────────────────────────
 
 export async function getStatistics(farmId) {
@@ -380,26 +379,19 @@ export async function getStatistics(farmId) {
       fetchTable('workers',   farmId),
       fetchTable('inventory', farmId)
     ]);
-
-    const totalExpenses = exp.reduce((s, e) => s + (Number(e.amount) || 0), 0);
-    const totalRevenues = rev.reduce((s, r) => s + (Number(r.amount) || 0), 0);
-    const inventoryValue = inv.reduce(
-      (s, i) => s + (Number(i.quantity) || 0) * (Number(i.price) || 0), 0
-    );
-    const activeWorkers = wrk.filter(w => !w.endDate).length;
-    const lowStockItems = inv.filter(
-      i => Number(i.minStock) > 0 && Number(i.quantity) <= Number(i.minStock)
-    );
-
+    const totalExpenses  = exp.reduce((s, e) => s + (Number(e.amount)   || 0), 0);
+    const totalRevenues  = rev.reduce((s, r) => s + (Number(r.amount)   || 0), 0);
+    const inventoryValue = inv.reduce((s, i) => s + (Number(i.quantity) || 0) * (Number(i.price) || 0), 0);
     return {
       totalExpenses, totalRevenues,
       netProfit: totalRevenues - totalExpenses,
-      inventoryValue, activeWorkers,
-      totalWorkers: wrk.length,
-      lowStockItems: lowStockItems.length,
-      totalItems: inv.length,
+      inventoryValue,
+      activeWorkers:       wrk.filter(w => !w.endDate).length,
+      totalWorkers:        wrk.length,
+      lowStockItems:       inv.filter(i => Number(i.minStock) > 0 && Number(i.quantity) <= Number(i.minStock)).length,
+      totalItems:          inv.length,
       totalExpenseRecords: exp.length,
-      totalRevenueRecords: rev.length
+      totalRevenueRecords: rev.length,
     };
   } catch (e) {
     console.error('getStatistics:', e.message);
@@ -408,17 +400,16 @@ export async function getStatistics(farmId) {
 }
 
 // ─────────────────────────────────────────────────────────
-// 🧹  Clear all farm data (admin only — should be guarded by RLS)
+// 🧹  Clear all farm data (admin only)
 // ─────────────────────────────────────────────────────────
 
 export async function clearAllData(farmId) {
   if (!farmId) throw new Error('farmId required');
-  const tables = ['expenses', 'revenues', 'inventory', 'workers', 'usage_log'];
   const results = await Promise.all(
-    tables.map(t => supabase.from(t).delete().eq('farmId', farmId))
+    ['expenses', 'revenues', 'inventory', 'workers', 'usage_log']
+      .map(t => supabase.from(t).delete().eq('farmId', farmId))
   );
-  const errors = results.filter(r => r.error);
-  if (errors.length) throw new Error('Failed to clear all data');
+  if (results.some(r => r.error)) throw new Error('Failed to clear all data');
   return true;
 }
 
@@ -435,10 +426,7 @@ export async function ping() {
 }
 
 export function getSupabaseStatus() {
-  return {
-    url: SUPABASE_URL,
-    connected: !!SUPABASE_URL && !!SUPABASE_KEY,
-  };
+  return { url: SUPABASE_URL, connected: !!SUPABASE_URL && !!SUPABASE_KEY };
 }
 
 export default supabase;
