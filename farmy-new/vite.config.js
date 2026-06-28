@@ -55,15 +55,6 @@ export default defineConfig({
   server: { port: 3000 },
   build: {
     outDir: 'dist',
-    // ✅ capacitor packages تُحمّل ديناميكياً (مش في الـ bundle)
-    rollupOptions: {
-      external: [
-        '@capacitor/core',
-        '@capacitor/app',
-        '@capacitor/browser',
-        '@capacitor/camera',
-      ],
-    }
   },
   optimizeDeps: {
     include: ['@supabase/supabase-js'],
