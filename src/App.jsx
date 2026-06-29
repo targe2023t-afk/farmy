@@ -258,16 +258,26 @@ export default function App() {
           if (url?.startsWith("com.farmy.app://login-callback")) {
             showToast("🔗 تم استقبال الرابط من جوجل");
             try {
-              const { error } = await supabase.auth.exchangeCodeForSession(url);
-              if (error) {
-                showToast("❌ exchangeCodeForSession: " + error.message);
-                console.error("exchangeCodeForSession:", error.message);
+              // ✅ implicit flow: التوكنز موجودة بعد # في الرابط
+              const hashPart = url.split("#")[1] || "";
+              const params = new URLSearchParams(hashPart);
+              const access_token = params.get("access_token");
+              const refresh_token = params.get("refresh_token");
+
+              if (access_token && refresh_token) {
+                const { error } = await supabase.auth.setSession({ access_token, refresh_token });
+                if (error) {
+                  showToast("❌ setSession: " + error.message);
+                  console.error("setSession:", error.message);
+                } else {
+                  showToast("✅ تم تسجيل الدخول من جوجل");
+                }
               } else {
-                showToast("✅ تم تبديل الكود بـ session");
+                showToast("❌ لم يتم العثور على التوكنز في الرابط");
               }
             } catch (e) {
-              showToast("❌ exchangeCodeForSession استثناء: " + (e?.message || e));
-              console.error("exchangeCodeForSession failed:", e?.message || e);
+              showToast("❌ خطأ أثناء معالجة الرابط: " + (e?.message || e));
+              console.error("appUrlOpen handling failed:", e?.message || e);
             }
             try { await Browser.close(); } catch (_) {}
             await loadUserFromSession();
