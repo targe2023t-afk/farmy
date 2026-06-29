@@ -176,6 +176,7 @@ export default function App() {
 
       // ✅ نجلب بيانات المستخدم من جدول users بالـ authId
       let dbUser = await fetchUserByAuthId(authUser.id);
+      let createErrorMsg = null;
 
       if (!dbUser) {
         showToast("ℹ️ مستخدم جديد، بيتم إنشاء حساب...");
@@ -196,7 +197,7 @@ export default function App() {
         };
         const { error } = await supabase.from("users").upsert(newUser, { onConflict: "id" });
         if (error) {
-          showToast("❌ فشل إنشاء المستخدم: " + error.message);
+          createErrorMsg = error.message;
           console.error("create user:", error.message);
         } else {
           dbUser = newUser;
@@ -212,7 +213,7 @@ export default function App() {
         showToast("✅ تم تسجيل الدخول بنجاح");
         setUser(dbUser);
       } else {
-        showToast("❌ تعذر تحميل بيانات المستخدم (dbUser فاضي)");
+        showToast(createErrorMsg ? ("❌ فشل إنشاء الحساب: " + createErrorMsg) : "❌ تعذر تحميل بيانات المستخدم (dbUser فاضي)");
       }
     } catch (e) {
       showToast("❌ خطأ في loadUserFromSession: " + e.message);
@@ -2042,6 +2043,3 @@ function RestoreModal({ trash, onRestore, onClose }) {
         })}
         <button style={{width:"100%", marginTop:10, padding:11, background:"var(--bg)", border:"1px solid var(--border)", borderRadius:10, fontFamily:"'Cairo',sans-serif", fontSize:14, cursor:"pointer", color:"var(--text2)"}} onClick={onClose}>إغلاق</button>
       </div>
-    </div>
-  );
-}
