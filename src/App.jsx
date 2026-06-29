@@ -1050,6 +1050,75 @@ function BarcodeScanner({ onScan, onClose }) {
     return () => { stopCamera(); };
   }, [onScan]);
 
+function BarcodeScanner({ onScan, onClose }) {
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const [error, setError] = useState("");
+  const [manualCode, setManualCode] = useState("");
+  const [permState, setPermState] = useState("idle");
+
+  useEffect(() => {
+    let interval;
+    const stopCamera = () => {
+      if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+      clearInterval(interval);
+    };
+
+    async function requestAndStart() {
+      setPermState("requesting");
+      
+      // تجاهل Capacitor وكمّل مباشرة لـ getUserMedia
+      try {
+        const { Camera } = await import("@capacitor/camera");
+        await Camera.requestPermissions({ permissions: ["camera"] }).catch(() => {});
+      } catch (_) { /* web */ }
+
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setError("الكاميرا غير مدعومة في هذا المتصفح.");
+        setPermState("denied");
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
+        });
+        setPermState("granted");
+        setError("");
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
+        }
+        if ("BarcodeDetector" in window) {
+          const detector = new window.BarcodeDetector({ formats: ["ean_13", "ean_8", "qr_code", "code_128", "code_39"] });
+          interval = setInterval(async () => {
+            if (videoRef.current) {
+              try {
+                const b = await detector.detect(videoRef.current);
+                if (b.length > 0) { onScan(b[0].rawValue); stopCamera(); }
+              } catch (_) {}
+            }
+          }, 500);
+        } else {
+          setError("مسح الباركود غير مدعوم في هذا المتصفح. استخدم الإدخال اليدوي.");
+        }
+      } catch (e) {
+        setPermState("denied");
+        if (e.name === "NotAllowedError" || e.name === "PermissionDeniedError") {
+          setError("تم رفض إذن الكاميرا. يرجى السماح من إعدادات المتصفح.");
+        } else if (e.name === "NotFoundError") {
+          setError("لم يتم العثور على كاميرا في هذا الجهاز.");
+        } else {
+          setError("لا يمكن تشغيل الكاميرا: " + e.message);
+        }
+      }
+    }
+
+    requestAndStart();
+    return () => { stopCamera(); };
+  }, [onScan]);
+
   return (
     <div className="modal-ov" onClick={onClose}>
       <div className="modal-box" onClick={e => e.stopPropagation()}>
@@ -1057,7 +1126,7 @@ function BarcodeScanner({ onScan, onClose }) {
         <div className="modal-title">📷 مسح الباركود</div>
 
         {permState === "requesting" && !error && (
-          <div style={{textAlign:"center", padding:"20px 0", color:"var(--text2)"}}>⏳ جاري طلب إذن الكاميرا...</div>
+          <div style={{textAlign:"center", padding:"20px 0", color:"var(--text2)"}}>⏳ جاري تشغيل الكاميرا...</div>
         )}
 
         {error ? (
