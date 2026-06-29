@@ -2046,4 +2046,3 @@ function RestoreModal({ trash, onRestore, onClose }) {
     </div>
   );
 }
-      }
