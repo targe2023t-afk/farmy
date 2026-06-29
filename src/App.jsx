@@ -2043,4 +2043,7 @@ function RestoreModal({ trash, onRestore, onClose }) {
         })}
         <button style={{width:"100%", marginTop:10, padding:11, background:"var(--bg)", border:"1px solid var(--border)", borderRadius:10, fontFamily:"'Cairo',sans-serif", fontSize:14, cursor:"pointer", color:"var(--text2)"}} onClick={onClose}>إغلاق</button>
       </div>
+    </div>
+  );
+}
       }
